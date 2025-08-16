@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dictionarium Sanctae Marthae</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+</script>
+
+<style>
+  :root{
+    --bg:#0b0f14; --card:#121821; --muted:#9bb0c8; --text:#e7eef8; --accent:#70c0ff;
+    --chip:#1a2330; --chip-b:#263244; --line:#1f2a3a; --pill:#1b2839; --pill-b:#2a3b55;
+    --panel:#111824; --panel-head:#0f1520;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{ margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+  header{ position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(8px);
+    background:linear-gradient(180deg, rgba(11,15,20,.9), rgba(11,15,20,.6) 80%, transparent);
+    border-bottom:1px solid var(--line); }
+  .wrap{max-width:1100px; margin:0 auto; padding:14px 16px}
+
+  .brand{ display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:center; }
+  .logo{display:flex; align-items:center}
+  .logo img{ height:96px; width:auto; display:block; user-select:none; pointer-events:none; }
+
+  h1{margin:0 0 6px; font-size:20px; letter-spacing:.2px}
+  .row{ display:grid; gap:10px; grid-template-columns: 1fr 1fr 2fr; align-items:center; }
+  .select, .search{ background:var(--card); border:1px solid var(--line); color:var(--text);
+    padding:10px 12px; border-radius:12px; outline:none; }
+  .search{display:flex; align-items:center; gap:8px}
+  .search input{ all:unset; width:100%; font-size:15px; line-height:22px; }
+  .hint{font-size:12px; color:var(--muted); margin-top:6px}
+  main{padding:12px 16px 60px}
+  .status{color:var(--muted); padding:16px}
+  .cards{display:flex; flex-direction:column; gap:10px}
+
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px;
+    display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start; }
+  .head{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .word{ font-size:18px; font-weight:600; word-break:break-word; }
+  .meta{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{ background:var(--chip); border:1px solid var(--chip-b); padding:4px 8px; border-radius:999px; font-size:12px; color:var(--muted); }
+
+  .btn-col{ display:flex; flex-direction:column; gap:8px; align-items:stretch; min-width:170px; }
+  .pill-btn{ appearance:none; border:1px solid var(--pill-b); background:var(--pill); color:var(--text);
+    padding:9px 14px; border-radius:999px; cursor:pointer; font-weight:700; letter-spacing:.2px;
+    transition:filter .15s ease, transform .06s ease, box-shadow .15s ease; }
+  .pill-btn:hover{ filter:brightness(1.1) } .pill-btn:active{ transform:translateY(1px) }
+  .pill-btn[aria-pressed="true"]{ outline:2px solid var(--accent); outline-offset:2px; box-shadow:0 0 0 4px rgba(112,192,255,.12) inset; }
+
+  .xlat-panel, .morph-panel{ display:none; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:0; margin-top:8px; }
+  .xlat-panel.open, .morph-panel.open{ display:block; }
+  .x-head, .m-head{ padding:14px 18px; background:linear-gradient(180deg, var(--panel-head), rgba(255,255,255,0.04));
+    border-bottom:1px solid var(--line); border-radius:14px 14px 0 0; font-weight:800; letter-spacing:.2px; font-size:19px;
+    text-transform:lowercase; box-shadow:inset 0 1px 0 rgba(255,255,255,.03); }
+  .x-body, .m-body{ padding:12px 14px; }
+  .m-body{ overflow:auto; }
+
+  .xlat-item{ display:grid; grid-template-columns: 140px 1fr; gap:12px; padding:6px 0; align-items:start; }
+  .xlat-item .lab{ font-weight:600; color:var(--accent) }
+  .xlat-item + .xlat-item{ border-top:1px dashed var(--line); }
+
+  .morph-table{
+    display:inline-table; width:max-content; table-layout:auto;
+    border-collapse:separate; border-spacing:0; font-size:15px; margin:0 2px;
+  }
+  .morph-table th, .morph-table td{
+    border:1px solid #2b3a52; padding:6px 8px; vertical-align:middle; min-height:28px; font-size:inherit; white-space:nowrap;
+  }
+  .morph-table th{ text-align:center; background:#0f1520; color:var(--text); }
+  .morph-table td{ background:#141b26; }
+  .morph-table .cases{ font-style:italic; color:var(--text); }
+
+  .topbar{ display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:8px; }
+  .small{ font-size:12px; color:var(--muted) } .count{ font-variant-numeric: tabular-nums; }
+
+  footer{
+    position:fixed; left:0; right:0; bottom:0; z-index:9;
+    background:linear-gradient(180deg, rgba(11,15,20,0), rgba(11,15,20,0.9));
+    border-top:1px solid var(--line);
+    text-align:center; font-style:italic; color:var(--muted);
+    padding:10px 16px;
+  }
+
+  @media (max-width:900px){
+    .row{ grid-template-columns: 1fr 1fr }
+    .search{ grid-column: 1 / -1 }
+    .btn-col{ min-width:unset }
+    .xlat-item{ grid-template-columns: 110px 1fr; }
+    .x-head,.m-head{ font-size:18px; }
+  }
+  @media (max-width:520px){ .logo img{ height:72px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo"><img src="image.png" alt="Logo Dictionarium Sanctae Marthae" /></div>
+      <div>
+        <h1>Dictionarium Sanctae Marthae</h1>
+        <div class="row">
+          <!-- kolejność: Slavonica, Russica, Ucrainica, Albaruthenica, Polonica, Slovaca, Bohemica -->
+          <select id="leftLang" class="select" title="Język po lewej (źródłowy)">
+            <option value="SLA">Slavonica</option>
+            <option value="RUS">Russica</option>
+            <option value="UCR">Ucrainica</option>
+            <option value="ALB">Albaruthenica</option>
+            <option value="POL" selected>Polonica</option>
+            <option value="SLO">Slovaca</option>
+            <option value="BOH">Bohemica</option>
+          </select>
+          <select id="rightLang" class="select" title="Język po prawej (docelowy)">
+            <option value="SLA" selected>Slavonica</option>
+            <option value="RUS">Russica</option>
+            <option value="UCR">Ucrainica</option>
+            <option value="ALB">Albaruthenica</option>
+            <option value="POL">Polonica</option>
+            <option value="SLO">Slovaca</option>
+            <option value="BOH">Bohemica</option>
+          </select>
+          <label class="search" title="Szukaj prefiksu w kolumnie źródłowej">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 0 0 1.57-4.23C15.99 6.01 13.32 3.34 9.99 3.34S4 6.01 4 9.34s2.67 6 5.99 6c1.61 0 3.09-.59 4.23-1.57l.27.28v.79L20 20.33 21.33 19 15.5 14Zm-5.51 0C7.47 14 6 12.53 6 10.84S7.47 7.68 9.99 7.68s3.99 1.47 3.99 3.16S12.52 14 9.99 14Z"/></svg>
+            <input id="query" placeholder="Scribe initium verbi" autocomplete="off" />
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="hint">Translationes recentiores sub puga “translationes” praesto sunt.</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="status" class="status">Ładowanie danych z PDF…</div>
+  <div class="topbar" style="display:none" id="topbar">
+    <div class="small">numerus verborum totus: <span class="count" id="countAll">0</span></div>
+    <div class="small">numerus verborum quaesitorum: <span class="count" id="countShown">0</span></div>
+  </div>
+  <div id="cards" class="cards"></div>
+</main>
+
+<footer>
+  <div class="wrap">Auctor huius dictionarii Antonius Sofronus est.</div>
+</footer>
+
+<script>
+(async function(){
+  const PDF_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTIzVmMRmSAz-AE8rP_lLJfvHNnVRp5kGQFOCkn9lANWzeEkugCT9LO-JFRDhCLwZgvOuJBnV3shtRV/pub?gid=0&single=true&output=pdf";
+
+  const statusEl = document.getElementById('status');
+  const cardsEl  = document.getElementById('cards');
+  const topbar   = document.getElementById('topbar');
+  const countAll = document.getElementById('countAll');
+  const countShown = document.getElementById('countShown');
+
+  const leftSel  = document.getElementById('leftLang');
+  const rightSel = document.getElementById('rightLang');
+  const queryInp = document.getElementById('query');
+
+  const DEFAULT_FALLBACK = "POL";
+  const debounce = (fn, d=200)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), d); }; };
+
+  /* ==== obsługa PDF-owych diakrytyków ==== */
+  const COMB_RE = /^[\u0300-\u036F\u02C7]+[;,.]?$/;
+  function normalizeCarons(s){
+    s = s.replace(/(\p{L})\s*[\u02C7]/gu, '$1\u030C').replace(/\u02C7/g, '\u030C');
+    return s;
+  }
+  function tidyCombiningSpaces(s){
+    s = s.replace(/[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+([\u0300-\u036F])/gu, '$1')
+         .replace(/([\u0300-\u036F])[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+/gu, '$1');
+    return s.normalize('NFC');
+  }
+  function mergeCombining(itemsSortedByX){
+    const out=[];
+    for(const it of itemsSortedByX){
+      if(out.length && COMB_RE.test(it.str)){ out[out.length-1].str += it.str; }
+      else out.push({str:it.str, x:it.x, y:it.y});
+    }
+    return out;
+  }
+
+  function isNounLikePOS(pos){
+    const t = (pos||"").toLowerCase();
+    return /\b(nomen|nom\.?|pronomen|pron\.?|adiectiv|adjectiv|adj\.?)\b/.test(t);
+  }
+  function splitGenderPrefix(s){
+    if(!s) return {gender:"", rest:""};
+    const m = s.match(/^\s*([mfn]\.(?:\s*\/\s*[mfn]\.)*)\s*[,;:\-]?\s*(.*)$/i);
+    if(m) return {gender:m[1].replace(/\s+/g,''), rest:m[2]||""};
+    return {gender:"", rest:s};
+  }
+  function countSemis(s){ return (s.match(/;/g)||[]).length; }
+
+  /* ===== PDF -> rekordy (układ: SLA I II III IV V RUS UCR ALB POL SLO BOH) ===== */
+  async function loadRecordsFromPdf(){
+    statusEl.textContent = "Ładowanie danych z PDF…";
+    cardsEl.innerHTML = ""; topbar.style.display = "none";
+
+    const url = PDF_URL + "&cb=" + Date.now();
+    const loadingTask = pdfjsLib.getDocument({ url, cMapPacked: true, useSystemFonts: true });
+    const pdf = await loadingTask.promise;
+
+    const columnLabels = ["SLA","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+    let anchors = null; const records = [];
+
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const raw = content.items.map(it=>{
+        const tx = it.transform[4], ty = it.transform[5];
+        return {str: (it.str||"").trim(), x: tx, y: ty};
+      }).filter(it=>it.str);
+
+      raw.sort((a,b)=> b.y - a.y || a.x - b.x);
+      const rows = []; const tolY = 3.5;
+      for(const it of raw){
+        let row = rows.length ? rows[rows.length-1] : null;
+        if(!row || Math.abs(row.y - it.y) > tolY) rows.push({ y: it.y, items:[it] });
+        else row.items.push(it);
+      }
+
+      // wykryj nagłówek
+      for(const row of rows){
+        const joined = row.items.map(i=>i.str).join(" ");
+        const hasAll = columnLabels.every(lab => joined.includes(lab));
+        if(hasAll){
+          const found = {};
+          for(const lab of columnLabels){
+            const cand = row.items.find(i => i.str === lab) || row.items.find(i => i.str.includes(lab));
+            if(cand) found[lab] = cand.x;
+          }
+          if(Object.keys(found).length >= 9){ anchors = found; }
+          break;
+        }
+      }
+      if(!anchors){
+        for(const row of rows){
+          const txts = row.items.map(i=>i.str);
+          const hits = ["RUS","UCR","ALB","POL","SLO","BOH"].filter(x=> txts.includes(x)).length;
+          if(hits >= 4){
+            const found = {};
+            for(const lab of columnLabels){
+              const cand = row.items.find(i => i.str === lab);
+              if(cand) found[lab] = cand.x;
+            }
+            if(Object.keys(found).length >= 7){ anchors = found; break; }
+          }
+        }
+      }
+      if(!anchors) continue;
+
+      // granice kolumn
+      const fullOrder = ["SLA","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+      const present = fullOrder.map(l=>({lab:l,x:anchors[l]})).filter(c=>Number.isFinite(c.x)).sort((a,b)=>a.x-b.x);
+      if(present.length && present.length < fullOrder.length){
+        const minX=present[0].x, maxX=present[present.length-1].x;
+        const step=(maxX-minX)/(fullOrder.length-1||1), have=new Set(present.map(c=>c.lab));
+        for(let i=0;i<fullOrder.length;i++){ const lab=fullOrder[i]; if(!have.has(lab)) present.push({lab, x:minX+step*i}); }
+        present.sort((a,b)=>a.x-b.x);
+      }
+      const boundaries=[]; for(let i=0;i<present.length-1;i++) boundaries.push((present[i].x+present[i+1].x)/2);
+      function colByX(x){
+        for(let i=0;i<present.length;i++){
+          const L=i===0?-Infinity:boundaries[i-1], R=i===present.length-1?Infinity:boundaries[i];
+          if(x>=L && x<R) return present[i].lab;
+        } return "SLA";
+      }
+
+      // rekordy (pomijamy nagłówek)
+      for(const row of rows){
+        const joined = row.items.map(i=>i.str).join(" ");
+        if(columnLabels.every(l=> joined.includes(l))) continue;
+
+        const merged = mergeCombining(row.items.slice().sort((a,b)=>a.x-b.x));
+
+        const rec = {SLA:"", I:"", II:"", III:"", IV:"", V:"", RUS:"", UCR:"", ALB:"", POL:"", SLO:"", BOH:""};
+        const buckets = {SLA:[], I:[], II:[], III:[], IV:[], V:[], RUS:[], UCR:[], ALB:[], POL:[], SLO:[], BOH:[]};
+
+        for(const it of merged){ buckets[colByX(it.x)].push(it.str); }
+        for(const k of Object.keys(rec)){
+          const str = buckets[k].join(" ").replace(/\s+/g," ").trim();
+          rec[k] = tidyCombiningSpaces(normalizeCarons(str));
+        }
+
+        // Naprawa IV/V dla POS "rzeczownikowych": rodzaj do IV, 16 form do V
+        if(isNounLikePOS(rec.I)){
+          const ivSemi = countSemis(rec.IV);
+          const vSemi  = countSemis(rec.V);
+          if(ivSemi>0 && vSemi>0){ rec.V = `${rec.IV} ${rec.V}`.replace(/\s+/g,' ').trim(); rec.IV = ""; }
+          let {gender:g1, rest:ivRest} = splitGenderPrefix(rec.IV);
+          if(ivRest && ivRest.includes(";")){ rec.V = [ivRest, rec.V].filter(Boolean).join(" ").trim(); ivRest = ""; }
+          let {gender:g2, rest:vRest} = splitGenderPrefix(rec.V);
+          const genus = [g1, g2].filter(Boolean).join(" ");
+          rec.IV = tidyCombiningSpaces(normalizeCarons([genus, ivRest].filter(Boolean).join(" ").trim()));
+          rec.V  = tidyCombiningSpaces(normalizeCarons(vRest.trim()));
+
+          // JEŚLI lista V zaczyna się od "anim." / "inan." → przenieś do IV, nie do N.Sg
+          const leadQual = rec.V.match(/^\s*(anim\.|inan\.)\s*/i);
+          if(leadQual){
+            rec.IV = tidyCombiningSpaces(normalizeCarons([rec.IV, leadQual[1]].filter(Boolean).join(" ").trim()));
+            rec.V  = rec.V.replace(/^\s*(anim\.|inan\.)\s*/i,'').trim();
+          }
+        }
+
+        if(Object.values(rec).some(v=>v)) records.push(rec);
+      }
+    }
+
+    // deduplikacja
+    const key = r => [r.SLA,r.I,r.II,r.III,r.IV,r.V,r.RUS,r.UCR,r.ALB,r.POL,r.SLO,r.BOH].join("¦");
+    const map = new Map(); for(const r of records){ if(!map.has(key(r))) map.set(key(r), r); }
+    const final = Array.from(map.values());
+
+    countAll.textContent = final.length;
+    topbar.style.display = "flex";
+    statusEl.textContent = "";
+    return final;
+  }
+
+  const data = await loadRecordsFromPdf().catch(err=>{
+    console.error(err);
+    statusEl.innerHTML = "Nie udało się wczytać PDF (CORS / format).";
+    return [];
+  });
+
+  /* ===== wyszukiwarka / render ===== */
+  function normalize(s){ return (s||"").toLowerCase().trim(); }
+  function prefixMatch(cell, q){
+    if(!cell || !q) return false;
+    const parts = cell.split(/[,;|/]/g).map(s=>s.trim()).filter(Boolean);
+    if(parts.length===0) parts.push(cell.trim());
+    const qn = normalize(q);
+    return parts.some(p => normalize(p).startsWith(qn));
+  }
+
+  function closeAllPanels(){
+    document.querySelectorAll('.xlat-panel.open, .morph-panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.pill-btn[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed','false'));
+  }
+
+  function parseV(vStr){
+    const parts = (vStr||"").split(";").map(s=>s.trim()).filter(s=>s.length||s==="");
+    const out = new Array(16).fill("—");
+    for(let i=0;i<Math.min(parts.length,16);i++) if(parts[i]!==undefined) out[i]=parts[i]||"—";
+    return out;
+  }
+
+  function buildNounLikeTable(vStr){
+    const v = parseV(vStr);
+    const cases = ["Nominativus","Accusativus","Genetivus","Locativus","Dativus","Instrumentalis","Vocativus"];
+    const table = document.createElement('table'); table.className='morph-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th class="cases"> </th>
+      <th>Singularis</th>
+      <th>Dualis</th>
+      <th>Pluralis</th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    const S = [0,1,2,3,4,5,6];
+    const Dn = v[7], Dgl = v[8], Ddi = v[9];
+    const P = [10,11,12,13,14,15,10];
+
+    cases.forEach((c, i)=>{
+      const tr = document.createElement('tr');
+
+      const tdLabel = document.createElement('td');
+      tdLabel.textContent = c;
+      tdLabel.className = 'cases';
+      tr.appendChild(tdLabel);
+
+      const tdS = document.createElement('td'); tdS.textContent = v[S[i]];
+      tr.appendChild(tdS);
+
+      if(i===0){
+        const tdD = document.createElement('td'); tdD.textContent = Dn; tdD.rowSpan = 2; tr.appendChild(tdD);
+      }else if(i===2){
+        const tdD = document.createElement('td'); tdD.textContent = Dgl; tdD.rowSpan = 2; tr.appendChild(tdD);
+      }else if(i===4){
+        const tdD = document.createElement('td'); tdD.textContent = Ddi; tdD.rowSpan = 2; tr.appendChild(tdD);
+      }else if(i===6){
+        const tdD = document.createElement('td'); tdD.textContent = Dn; tr.appendChild(tdD);
+      }
+
+      const tdP = document.createElement('td'); tdP.textContent = v[P[i]];
+      tr.appendChild(tdP);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function buildVerbTable(){
+    const persons = ["1. persona","2. persona","3. persona"];
+    const table = document.createElement('table'); table.className='morph-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th class="cases"> </th>
+      <th>Singularis</th>
+      <th>Dualis</th>
+      <th>Pluralis</th>
+    </tr>`;
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    persons.forEach(p=>{
+      const tr=document.createElement('tr');
+      const tdL=document.createElement('td'); tdL.textContent=p; tdL.className='cases'; tr.appendChild(tdL);
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function render(){
+    const left = leftSel.value, right = rightSel.value, q = queryInp.value.trim();
+    let rows = data;
+    if(q){ rows = rows.filter(r => prefixMatch(r[left], q)); }
+
+    cardsEl.innerHTML = "";
+    countShown.textContent = rows.length;
+
+    if(!q){
+      if(data.length){
+        statusEl.innerHTML = "Eventus scribentur in lingua, quae a dextra parte selecta erit. Intra in campo quaestionis verbum, ut quaerere incipias.";
+      }
+      return;
+    } else { statusEl.textContent = ""; }
+
+    rows = rows.slice().sort((a,b)=> (a[right]||"").localeCompare(b[right]||""));
+
+    rows.forEach((r)=>{
+      const card = document.createElement('div'); card.className='card';
+      const head = document.createElement('div'); head.className='head';
+
+      const word = document.createElement('div'); word.className='word';
+      word.textContent = (r[right] || "(brak)").trim();
+      head.appendChild(word);
+
+      // METADANE (bez V)
+      const meta = document.createElement('div'); meta.className='meta';
+      const posNorm = (r.I || "").toLowerCase().replace(/\s+/g,' ').trim();
+      const isVerb = /\b(verbum|verb|v\.?)\b/.test(posNorm);
+      const isAdj  = /\b(adiectiv(?:um|e)?|adjectiv(?:um|e)?|adj\.?)\b/.test(posNorm);
+      const isNoun = /\b(nomen|nom\.?|noun|substantiv(?:um|e)?|subst\.?)\b/.test(posNorm);
+      const isPron = /\b(pronomen|pron\.?)\b/.test(posNorm);
+      const morphAllowed = isVerb || isAdj || isNoun || isPron;
+      const labelIV = isVerb ? "aspectus" : (isAdj ? "gradus comparativus" : "genus");
+
+      [
+        ["pars orationis", r.I],
+        ["paradigma accentualia", r.II],
+        ["exemplum", r.III],
+        [labelIV, r.IV]
+      ].forEach(([lab, val])=>{
+        if(!val) return;
+        const chip=document.createElement('span'); chip.className='chip';
+        chip.textContent = lab ? `${lab}: ${val}` : val;
+        meta.appendChild(chip);
+      });
+      head.appendChild(meta);
+
+      // PRZYCISKI
+      const btnCol = document.createElement('div'); btnCol.className='btn-col';
+
+      const btnTrans = document.createElement('button');
+      btnTrans.className='pill-btn'; btnTrans.type='button';
+      btnTrans.textContent='translationes';
+      btnTrans.setAttribute('aria-pressed','false');
+      btnCol.appendChild(btnTrans);
+
+      let mPanel = null, btnMorph = null;
+      if(morphAllowed){
+        btnMorph = document.createElement('button');
+        btnMorph.className='pill-btn'; btnMorph.type='button';
+        btnMorph.textContent = isVerb ? 'coniugatio' : 'declinatio';
+        btnMorph.setAttribute('aria-pressed','false');
+        btnCol.appendChild(btnMorph);
+
+        mPanel = document.createElement('div'); mPanel.className='morph-panel';
+        const mHead  = document.createElement('div'); mHead.className='m-head';
+        mHead.textContent = isVerb ? 'coniugatio' : 'declinatio';
+        const mBody  = document.createElement('div'); mBody.className='m-body';
+        const table = isVerb ? buildVerbTable() : buildNounLikeTable(r.V);
+        mBody.appendChild(table);
+        mPanel.appendChild(mHead); mPanel.appendChild(mBody);
+      }
+
+      card.appendChild(head);
+      card.appendChild(btnCol);
+      cardsEl.appendChild(card);
+
+      // panel „translationes” — kolejność: SLA, RUS, UCR, ALB, POL, SLO, BOH
+      const xPanel = document.createElement('div');
+      xPanel.className = 'xlat-panel';
+      xPanel.innerHTML = `
+        <div class="x-head">translationes</div>
+        <div class="x-body">
+          <div class="xlat-item"><div class="lab">Slavonica</div><div class="val">${r.SLA || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Russica</div><div class="val">${r.RUS || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Ucrainica</div><div class="val">${r.UCR || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Albaruthenica</div><div class="val">${r.ALB || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Polonica</div><div class="val">${r.POL || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Slovaca</div><div class="val">${r.SLO || "—"}</div></div>
+          <div class="xlat-item"><div class="lab">Bohemica</div><div class="val">${r.BOH || "—"}</div></div>
+        </div>`;
+      cardsEl.appendChild(xPanel);
+
+      if(mPanel){ cardsEl.appendChild(mPanel); }
+
+      // togglowanie – tylko jedno okno naraz
+      btnTrans.addEventListener('click', ()=>{
+        const open = !xPanel.classList.contains('open');
+        closeAllPanels();
+        if(open){
+          xPanel.classList.add('open');
+          btnTrans.setAttribute('aria-pressed','true');
+          xPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }
+      });
+      if(btnMorph){
+        btnMorph.addEventListener('click', ()=>{
+          const open = !mPanel.classList.contains('open');
+          closeAllPanels();
+          if(open){
+            mPanel.classList.add('open');
+            btnMorph.setAttribute('aria-pressed','true');
+            mPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+          }
+        });
+      }
+    });
+  }
+
+  /* Zasada „zawsze jedna Slavonica” (SLA) */
+  let lastLeft = leftSel.value, lastRight = rightSel.value;
+  function enforceSlavonica(trigger){
+    const prevLeft = lastLeft, prevRight = lastRight;
+    let L = leftSel.value, R = rightSel.value;
+
+    if(trigger === 'left'){
+      if(R === 'SLA' && L === 'SLA'){ rightSel.value = prevLeft && prevLeft !== 'SLA' ? prevLeft : DEFAULT_FALLBACK; }
+      else if(L !== 'SLA' && R !== 'SLA'){ rightSel.value = 'SLA'; }
+    } else if(trigger === 'right'){
+      if(L === 'SLA' && R === 'SLA'){ leftSel.value = prevRight && prevRight !== 'SLA' ? prevRight : DEFAULT_FALLBACK; }
+      else if(L !== 'SLA' && R !== 'SLA'){ leftSel.value = 'SLA'; }
+    }
+    lastLeft = leftSel.value; lastRight = rightSel.value;
+    closeAllPanels(); render();
+  }
+
+  leftSel.addEventListener('change', ()=>{ enforceSlavonica('left'); });
+  rightSel.addEventListener('change', ()=>{ enforceSlavonica('right'); });
+  queryInp.addEventListener('input', debounce(render, 120));
+
+  // start
+  lastLeft = leftSel.value; lastRight = rightSel.value;
+  if(data.length){
+    statusEl.innerHTML = "Eventus scribentur in lingua, quae a dextra parte selecta erit. Intra in campo quaestionis verbum, ut quaerere incipias.";
+  }
+})();
+</script>
+</body>
+</html>
