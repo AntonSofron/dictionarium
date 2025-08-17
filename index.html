@@ -187,9 +187,10 @@
     return out;
   }
 
+  /* Uznawaj także skróty: n. = nom. (nomen), v / vb. = verbum */
   function isNounLikePOS(pos){
     const t = (pos||"").toLowerCase();
-    return /\b(nomen|nom\.?|pronomen|pron\.?|adiectiv|adjectiv|adj\.?)\b/.test(t);
+    return /\b(nomen|nom\.?|n\.?|pronomen|pron\.?|adiectiv|adjectiv|adj\.?)\b/.test(t);
   }
   function splitGenderPrefix(s){
     if(!s) return {gender:"", rest:""};
@@ -302,7 +303,7 @@
           rec.IV = tidyCombiningSpaces(normalizeCarons([genus, ivRest].filter(Boolean).join(" ").trim()));
           rec.V  = tidyCombiningSpaces(normalizeCarons(vRest.trim()));
 
-          // JEŚLI lista V zaczyna się od "anim." / "inan." → przenieś do IV, nie do N.Sg
+          // Jeśli lista V zaczyna się od "anim." / "inan." → przenieś do IV
           const leadQual = rec.V.match(/^\s*(anim\.|inan\.)\s*/i);
           if(leadQual){
             rec.IV = tidyCombiningSpaces(normalizeCarons([rec.IV, leadQual[1]].filter(Boolean).join(" ").trim()));
@@ -353,6 +354,7 @@
     return out;
   }
 
+  /* ===== rzeczowniki/przymiotniki/zaimki ===== */
   function buildNounLikeTable(vStr){
     const v = parseV(vStr);
     const cases = ["Nominativus","Accusativus","Genetivus","Locativus","Dativus","Instrumentalis","Vocativus"];
@@ -403,28 +405,90 @@
     return table;
   }
 
-  function buildVerbTable(){
-    const persons = ["1. persona","2. persona","3. persona"];
+  /* ===== czasowniki: układ jak na obrazie + reguły ===== */
+  function buildVerbTable(aspectStr){
+    const isImpf = /\bimpf\.?\b/i.test(aspectStr||"");
     const table = document.createElement('table'); table.className='morph-table';
+
     const thead = document.createElement('thead');
-    thead.innerHTML = `<tr>
-      <th class="cases"> </th>
-      <th>Singularis</th>
-      <th>Dualis</th>
-      <th>Pluralis</th>
-    </tr>`;
+    const topCols = isImpf
+      ? ['Incipere','Infinitivus','Supinum','Nomen verbi']
+      : ['', 'Infinitivus','Supinum','Nomen verbi']; // brak „Incipere” przy perf.
+    thead.appendChild(rowFrom(topCols, 'th'));
     table.appendChild(thead);
+
     const tbody = document.createElement('tbody');
-    persons.forEach(p=>{
+
+    // puste pola w pierwszym wierszu
+    tbody.appendChild(rowFrom(['','','',''], 'td'));
+
+    // Participia (bez słowa „Tempus”)
+    tbody.appendChild(sectionHeaderRow('Participia', 4));
+    tbody.appendChild(rowFrom(['','Praeteritum','Praesens','Futurum'], 'th', true));
+    ['Perfectivum','Activum','Passivum'].forEach(label=>{
       const tr=document.createElement('tr');
-      const tdL=document.createElement('td'); tdL.textContent=p; tdL.className='cases'; tr.appendChild(tdL);
+      const tdL=document.createElement('td'); tdL.textContent=label; tdL.className='cases'; tr.appendChild(tdL);
       tr.appendChild(document.createElement('td'));
       tr.appendChild(document.createElement('td'));
       tr.appendChild(document.createElement('td'));
       tbody.appendChild(tr);
     });
+
+    // Praesens
+    tbody.appendChild(sectionHeaderRow('Praesens', 4));
+    tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
+    ['Singularis','Dualis','Pluralis'].forEach(lbl=>{
+      const tr=document.createElement('tr');
+      const tdL=document.createElement('td'); tdL.textContent=lbl; tdL.className='cases'; tr.appendChild(tdL);
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tbody.appendChild(tr);
+    });
+
+    // Aoristus / Imperfectum wg aspektu
+    const tenseBlock = isImpf ? 'Imperfectum' : 'Aoristus';
+    tbody.appendChild(sectionHeaderRow(tenseBlock, 4));
+    tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
+    ['Singularis','Dualis','Pluralis'].forEach(lbl=>{
+      const tr=document.createElement('tr');
+      const tdL=document.createElement('td'); tdL.textContent=lbl; tdL.className='cases'; tr.appendChild(tdL);
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tbody.appendChild(tr);
+    });
+
+    // Imperativus — 3 liczby + 3 osoby (jak wyżej)
+    tbody.appendChild(sectionHeaderRow('Imperativus', 4));
+    tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
+    ['Singularis','Dualis','Pluralis'].forEach(lbl=>{
+      const tr=document.createElement('tr');
+      const tdL=document.createElement('td'); tdL.textContent=lbl; tdL.className='cases'; tr.appendChild(tdL);
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tr.appendChild(document.createElement('td'));
+      tbody.appendChild(tr);
+    });
+
     table.appendChild(tbody);
     return table;
+
+    function sectionHeaderRow(title, span){
+      const tr=document.createElement('tr');
+      const th=document.createElement('th'); th.textContent=title; th.colSpan=span;
+      tr.appendChild(th); return tr;
+    }
+    function rowFrom(labels, tag='td', italicFirst=false){
+      const tr=document.createElement('tr');
+      labels.forEach((lab,i)=>{
+        const el=document.createElement(tag);
+        if(italicFirst && i===0){ el.className='cases'; el.textContent=' '; }
+        else el.textContent=lab;
+        tr.appendChild(el);
+      });
+      return tr;
+    }
   }
 
   function render(){
@@ -455,9 +519,9 @@
       // METADANE (bez V)
       const meta = document.createElement('div'); meta.className='meta';
       const posNorm = (r.I || "").toLowerCase().replace(/\s+/g,' ').trim();
-      const isVerb = /\b(verbum|verb|v\.?)\b/.test(posNorm);
+      const isVerb = /\b(verbum|verb|vb\.?|v\.?)\b/.test(posNorm);
       const isAdj  = /\b(adiectiv(?:um|e)?|adjectiv(?:um|e)?|adj\.?)\b/.test(posNorm);
-      const isNoun = /\b(nomen|nom\.?|noun|substantiv(?:um|e)?|subst\.?)\b/.test(posNorm);
+      const isNoun = /\b(nomen|nom\.?|n\.?|noun|substantiv(?:um|e)?|subst\.?)\b/.test(posNorm);
       const isPron = /\b(pronomen|pron\.?)\b/.test(posNorm);
       const morphAllowed = isVerb || isAdj || isNoun || isPron;
       const labelIV = isVerb ? "aspectus" : (isAdj ? "gradus comparativus" : "genus");
@@ -496,7 +560,7 @@
         const mHead  = document.createElement('div'); mHead.className='m-head';
         mHead.textContent = isVerb ? 'coniugatio' : 'declinatio';
         const mBody  = document.createElement('div'); mBody.className='m-body';
-        const table = isVerb ? buildVerbTable() : buildNounLikeTable(r.V);
+        const table = isVerb ? buildVerbTable(r.IV) : buildNounLikeTable(r.V);
         mBody.appendChild(table);
         mPanel.appendChild(mHead); mPanel.appendChild(mBody);
       }
@@ -505,7 +569,7 @@
       card.appendChild(btnCol);
       cardsEl.appendChild(card);
 
-      // panel „translationes” — kolejność: SLA, RUS, UCR, ALB, POL, SLO, BOH
+      /* panel translationes — kolejność: SLA, RUS, UCR, ALB, POL, SLO, BOH */
       const xPanel = document.createElement('div');
       xPanel.className = 'xlat-panel';
       xPanel.innerHTML = `
