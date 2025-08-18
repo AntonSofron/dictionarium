@@ -43,7 +43,8 @@
   .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px;
     display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start; }
   .head{ display:flex; flex-direction:column; gap:6px; min-width:0; }
-  .word{ font-size:18px; font-weight:600; word-break:break-word; }
+  .word{ font-size:18px; font-weight:600; word-break:break-word; display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
+  .bracket{ color:var(--muted); font-weight:400; }
   .meta{ display:flex; flex-wrap:wrap; gap:6px; }
   .chip{ background:var(--chip); border:1px solid var(--chip-b); padding:4px 8px; border-radius:999px; font-size:12px; color:var(--muted); }
 
@@ -211,7 +212,10 @@
     const loadingTask = pdfjsLib.getDocument({ url, cMapPacked: true, useSystemFonts: true });
     const pdf = await loadingTask.promise;
 
-    const columnLabels = ["SLA","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+    // do wykrycia nagłówka NIE używamy "0", aby uniknąć fałszywych trafień
+    const detectLabels = ["SLA","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+    const fullOrder    = ["SLA","0","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+
     let anchors = null; const records = [];
 
     for(let p=1; p<=pdf.numPages; p++){
@@ -230,13 +234,12 @@
         else row.items.push(it);
       }
 
-      // nagłówek
       for(const row of rows){
         const joined = row.items.map(i=>i.str).join(" ");
-        const hasAll = columnLabels.every(lab => joined.includes(lab));
+        const hasAll = detectLabels.every(lab => joined.includes(lab));
         if(hasAll){
           const found = {};
-          for(const lab of columnLabels){
+          for(const lab of detectLabels){
             const cand = row.items.find(i => i.str === lab) || row.items.find(i => i.str.includes(lab));
             if(cand) found[lab] = cand.x;
           }
@@ -250,7 +253,7 @@
           const hits = ["RUS","UCR","ALB","POL","SLO","BOH"].filter(x=> txts.includes(x)).length;
           if(hits >= 4){
             const found = {};
-            for(const lab of columnLabels){
+            for(const lab of detectLabels){
               const cand = row.items.find(i => i.str === lab);
               if(cand) found[lab] = cand.x;
             }
@@ -260,7 +263,12 @@
       }
       if(!anchors) continue;
 
-      const fullOrder = ["SLA","I","II","III","IV","V","RUS","UCR","ALB","POL","SLO","BOH"];
+      // zasymuluj pozycję kolumny "0" pośrodku między SLA a I
+      if(Number.isFinite(anchors["SLA"]) && Number.isFinite(anchors["I"])){
+        anchors["0"] = (anchors["SLA"] + anchors["I"]) / 2;
+      }
+
+      // wyznacz granice
       const present = fullOrder.map(l=>({lab:l,x:anchors[l]})).filter(c=>Number.isFinite(c.x)).sort((a,b)=>a.x-b.x);
       if(present.length && present.length < fullOrder.length){
         const minX=present[0].x, maxX=present[present.length-1].x;
@@ -276,22 +284,22 @@
         } return "SLA";
       }
 
-      // wiersze
       for(const row of rows){
         const joined = row.items.map(i=>i.str).join(" ");
-        if(columnLabels.every(l=> joined.includes(l))) continue;
+        if(detectLabels.every(l=> joined.includes(l))) continue;
 
         const merged = mergeCombining(row.items.slice().sort((a,b)=>a.x-b.x));
-        const rec = {SLA:"", I:"", II:"", III:"", IV:"", V:"", RUS:"", UCR:"", ALB:"", POL:"", SLO:"", BOH:""};
-        const buckets = {SLA:[], I:[], II:[], III:[], IV:[], V:[], RUS:[], UCR:[], ALB:[], POL:[], SLO:[], BOH:[]};
+
+        const rec = {SLA:"", "0":"", I:"", II:"", III:"", IV:"", V:"", RUS:"", UCR:"", ALB:"", POL:"", SLO:"", BOH:""};
+        const buckets = {SLA:[], "0":[], I:[], II:[], III:[], IV:[], V:[], RUS:[], UCR:[], ALB:[], POL:[], SLO:[], BOH:[]};
 
         for(const it of merged){ buckets[colByX(it.x)].push(it.str); }
         for(const k of Object.keys(rec)){
-          const str = buckets[k].join(" ").replace(/\s+/g," ").trim();
+          const str = (buckets[k]||[]).join(" ").replace(/\s+/g," ").trim();
           rec[k] = tidyCombiningSpaces(normalizeCarons(str));
         }
 
-        /* ——— korekty POS ——— */
+        // korekty dla rzecz./przym./zaimków (IV/V)
         if(isNounLikePOS(rec.I)){
           const ivSemi = countSemis(rec.IV);
           const vSemi  = countSemis(rec.V);
@@ -309,7 +317,7 @@
           }
         }
 
-        /* ——— VERBUM: wyciągnij aspekt (impf./perf.) do IV, resztę przenieś do V ——— */
+        // czasowniki: aspekt do IV, reszta (formy) do V
         if(isVerbPOS(rec.I)){
           const m = rec.IV.match(/\b(impf\.?|perf\.?)\b/i);
           if(m){
@@ -317,9 +325,7 @@
             let rest = rec.IV.slice(m.index + m[0].length);
             rest = rest.replace(/^[\s:;,.\-–—]+/,'').trim();
             rec.IV = aspect;
-            if(rest){
-              rec.V = [rest, rec.V].filter(Boolean).join(rec.V ? '; ' : '');
-            }
+            if(rest){ rec.V = [rest, rec.V].filter(Boolean).join(rec.V ? '; ' : ''); }
           }
         }
 
@@ -327,8 +333,8 @@
       }
     }
 
-    // deduplikacja
-    const key = r => [r.SLA,r.I,r.II,r.III,r.IV,r.V,r.RUS,r.UCR,r.ALB,r.POL,r.SLO,r.BOH].join("¦");
+    // deduplikacja (uwzględnij "0")
+    const key = r => [r.SLA,r["0"],r.I,r.II,r.III,r.IV,r.V,r.RUS,r.UCR,r.ALB,r.POL,r.SLO,r.BOH].join("¦");
     const map = new Map(); for(const r of records){ if(!map.has(key(r))) map.set(key(r), r); }
     const final = Array.from(map.values());
 
@@ -344,7 +350,6 @@
     return [];
   });
 
-  /* ——— filtr i render ——— */
   function normalize(s){ return (s||"").toLowerCase().trim(); }
   function prefixMatch(cell, q){
     if(!cell || !q) return false;
@@ -411,7 +416,6 @@
     return m[1].toLowerCase().startsWith('impf') ? 'impf.' : 'perf.';
   }
 
-  /* ——— VERBUM: układ z 30 polami + reguły łączeń ——— */
   function buildVerbTable(aspectStr, vStr){
     const isImpf = /\bimpf\.?\b/i.test(aspectStr||"");
     const v = parseVerbV(vStr);
@@ -420,53 +424,57 @@
     const thead = document.createElement('thead');
     const topCols = isImpf
       ? ['Incipere','Infinitivus','Supinum','Nomen verbi']
-      : ['', 'Infinitivus','Supinum','Nomen verbi']; // Incipere tylko dla impf.
+      : ['', 'Infinitivus','Supinum','Nomen verbi'];
     thead.appendChild(rowFrom(topCols, 'th'));
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
     const slots=[];
 
-    // wiersz wartości nagłówkowych (4)
+    // wiersz wartości (4)
     {
       const tr = document.createElement('tr');
       const t0=document.createElement('td'), t1=document.createElement('td'),
             t2=document.createElement('td'), t3=document.createElement('td');
       tr.append(t0,t1,t2,t3); tbody.appendChild(tr);
-      slots.push(t0,t1,t2,t3);           // 0..3
+      slots.push(t0,t1,t2,t3);
     }
 
-    // PARTICIPIA (label + 2 kolumny)
+    // Participia
     tbody.appendChild(sectionHeaderRow('Participia', 3));
-    const secondTense = isImpf ? 'Praesens' : 'Futurum';
-    tbody.appendChild(rowFrom(['','Praeteritum', secondTense], 'th', true));
-
+    const secondTense = isImpf ? 'Praeteritum / Praesens' : 'Praeteritum / Futurum';
+    // nagłówek z pustą pierwszą komórką (etykieta wiersza)
+    {
+      const tr=document.createElement('tr');
+      const thEmpty=document.createElement('th'); thEmpty.className='cases'; thEmpty.textContent=' '; tr.appendChild(thEmpty);
+      const th1=document.createElement('th'); th1.textContent='Praeteritum'; tr.appendChild(th1);
+      const th2=document.createElement('th'); th2.textContent=isImpf?'Praesens':'Futurum'; tr.appendChild(th2);
+      tbody.appendChild(tr);
+    }
     // Perfectivum (scalone 2)
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Perfectivum'; l.className='cases'; tr.appendChild(l);
       const t=document.createElement('td'); t.colSpan=2; tr.appendChild(t); tbody.appendChild(tr);
       slots.push(t); }                     // 4
-
-    // Activum Praet./Praes.
+    // Activum
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Activum'; l.className='cases'; tr.appendChild(l);
       const a=document.createElement('td'), b=document.createElement('td'); tr.append(a,b); tbody.appendChild(tr);
       slots.push(a,b);}                    // 5,6
-
-    // Passivum Praet./Praes.
+    // Passivum
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Passivum'; l.className='cases'; tr.appendChild(l);
       const a=document.createElement('td'), b=document.createElement('td'); tr.append(a,b); tbody.appendChild(tr);
       slots.push(a,b);}                    // 7,8
 
-    // PRAESENS
+    // Praesens
     tbody.appendChild(sectionHeaderRow('Praesens', 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
     // Sg
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }          // 9..11
-    // Du (p2+p3 łączone)
+    // Du (p2+p3 razem)
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                          // 12..13
@@ -475,7 +483,7 @@
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }           // 14..16
 
-    // AOR/IMPF
+    // Aoristus / Imperfectum
     const tenseBlock = isImpf ? 'Imperfectum' : 'Aoristus';
     tbody.appendChild(sectionHeaderRow(tenseBlock, 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
@@ -483,7 +491,7 @@
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }           // 17..19
-    // Du (p2+p3 łączone)
+    // Du (p2+p3 razem)
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                           // 20..21
@@ -492,25 +500,25 @@
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }            // 22..24
 
-    // IMPERATIVUS  — Sing (p2+p3 razem), Dualis 3 kolumny, Pluralis 3 kolumny (p3 może pozostać puste)
+    // Imperativus (Sing p2+p3 razem; Dualis i Pluralis po 3 kol.)
     tbody.appendChild(sectionHeaderRow('Imperativus', 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
     // Sing
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[2]); }                                          // 25
-    // Du (3 rozdzielone)
+    // Du
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(), td()); tbody.appendChild(tr);
-      slots.push(tr.children[1],tr.children[2]); }                           // 26..27  (p3 pozostaje bez pozycji w V)
+      slots.push(tr.children[1],tr.children[2]); }                           // 26..27
     // Pl
     { const tr=document.createElement('tr'); tr.append(tdLab('Pluralis'),
         td(), td(), td()); tbody.appendChild(tr);
-      slots.push(tr.children[1],tr.children[2]); }                           // 28..29  (p3 puste)
+      slots.push(tr.children[1],tr.children[2]); }                           // 28..29
 
     table.appendChild(tbody);
 
-    // wstaw wartości
+    // wypełnij
     slots.forEach((cell, i)=>{
       if(i===0 && !isImpf){ cell.textContent = ""; }
       else cell.textContent = v[i] || "—";
@@ -559,7 +567,9 @@
       const head = document.createElement('div'); head.className='head';
 
       const word = document.createElement('div'); word.className='word';
-      word.textContent = (r[right] || "(brak)").trim();
+      const base = (r[right] || "(brak)").trim();
+      word.append(document.createTextNode(base));
+      if(r["0"]){ const br=document.createElement('span'); br.className='bracket'; br.textContent=`[${r["0"]}]`; word.append(br); }
       head.appendChild(word);
 
       const meta = document.createElement('div'); meta.className='meta';
@@ -586,7 +596,6 @@
       });
       head.appendChild(meta);
 
-      // przyciski
       const btnCol = document.createElement('div'); btnCol.className='btn-col';
       const btnTrans = document.createElement('button');
       btnTrans.className='pill-btn'; btnTrans.type='button';
@@ -615,7 +624,6 @@
       card.appendChild(btnCol);
       cardsEl.appendChild(card);
 
-      // translationes
       const xPanel = document.createElement('div');
       xPanel.className = 'xlat-panel';
       xPanel.innerHTML = `
@@ -656,7 +664,7 @@
     });
   }
 
-  /* zawsze jedna „Slavonica” */
+  // „zawsze jedna Slavonica”
   let lastLeft = leftSel.value, lastRight = rightSel.value;
   function enforceSlavonica(trigger){
     const prevLeft = lastLeft, prevRight = lastRight;
