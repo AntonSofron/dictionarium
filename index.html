@@ -268,7 +268,6 @@
         anchors["0"] = (anchors["SLA"] + anchors["I"]) / 2;
       }
 
-      // wyznacz granice
       const present = fullOrder.map(l=>({lab:l,x:anchors[l]})).filter(c=>Number.isFinite(c.x)).sort((a,b)=>a.x-b.x);
       if(present.length && present.length < fullOrder.length){
         const minX=present[0].x, maxX=present[present.length-1].x;
@@ -289,7 +288,6 @@
         if(detectLabels.every(l=> joined.includes(l))) continue;
 
         const merged = mergeCombining(row.items.slice().sort((a,b)=>a.x-b.x));
-
         const rec = {SLA:"", "0":"", I:"", II:"", III:"", IV:"", V:"", RUS:"", UCR:"", ALB:"", POL:"", SLO:"", BOH:""};
         const buckets = {SLA:[], "0":[], I:[], II:[], III:[], IV:[], V:[], RUS:[], UCR:[], ALB:[], POL:[], SLO:[], BOH:[]};
 
@@ -416,9 +414,14 @@
     return m[1].toLowerCase().startsWith('impf') ? 'impf.' : 'perf.';
   }
 
+  /* ——— VERBUM: układ z 30 polami + poprawne mapowanie dla perf. (bez „Incipere”) ——— */
   function buildVerbTable(aspectStr, vStr){
     const isImpf = /\bimpf\.?\b/i.test(aspectStr||"");
-    const v = parseVerbV(vStr);
+    const base = parseVerbV(vStr);
+    // Dla perf. nie ma "Incipere": wstaw pusty element na początek,
+    // aby pierwszy realny wpis trafił do "Infinitivus".
+    const v = isImpf ? base : ["", ...base];
+
     const table = document.createElement('table'); table.className='morph-table';
 
     const thead = document.createElement('thead');
@@ -442,8 +445,6 @@
 
     // Participia
     tbody.appendChild(sectionHeaderRow('Participia', 3));
-    const secondTense = isImpf ? 'Praeteritum / Praesens' : 'Praeteritum / Futurum';
-    // nagłówek z pustą pierwszą komórką (etykieta wiersza)
     {
       const tr=document.createElement('tr');
       const thEmpty=document.createElement('th'); thEmpty.className='cases'; thEmpty.textContent=' '; tr.appendChild(thEmpty);
@@ -451,17 +452,14 @@
       const th2=document.createElement('th'); th2.textContent=isImpf?'Praesens':'Futurum'; tr.appendChild(th2);
       tbody.appendChild(tr);
     }
-    // Perfectivum (scalone 2)
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Perfectivum'; l.className='cases'; tr.appendChild(l);
       const t=document.createElement('td'); t.colSpan=2; tr.appendChild(t); tbody.appendChild(tr);
       slots.push(t); }                     // 4
-    // Activum
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Activum'; l.className='cases'; tr.appendChild(l);
       const a=document.createElement('td'), b=document.createElement('td'); tr.append(a,b); tbody.appendChild(tr);
       slots.push(a,b);}                    // 5,6
-    // Passivum
     { const tr=document.createElement('tr');
       const l=document.createElement('td'); l.textContent='Passivum'; l.className='cases'; tr.appendChild(l);
       const a=document.createElement('td'), b=document.createElement('td'); tr.append(a,b); tbody.appendChild(tr);
@@ -470,15 +468,12 @@
     // Praesens
     tbody.appendChild(sectionHeaderRow('Praesens', 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
-    // Sg
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }          // 9..11
-    // Du (p2+p3 razem)
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                          // 12..13
-    // Pl
     { const tr=document.createElement('tr'); tr.append(tdLab('Pluralis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }           // 14..16
@@ -487,41 +482,34 @@
     const tenseBlock = isImpf ? 'Imperfectum' : 'Aoristus';
     tbody.appendChild(sectionHeaderRow(tenseBlock, 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
-    // Sg
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }           // 17..19
-    // Du (p2+p3 razem)
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                           // 20..21
-    // Pl
     { const tr=document.createElement('tr'); tr.append(tdLab('Pluralis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2],tr.children[3]); }            // 22..24
 
-    // Imperativus (Sing p2+p3 razem; Dualis i Pluralis po 3 kol.)
+    // Imperativus
     tbody.appendChild(sectionHeaderRow('Imperativus', 4));
     tbody.appendChild(rowFrom(['','Persona prima','Persona secunda','Persona tertia'], 'th', true));
-    // Sing
     { const tr=document.createElement('tr'); tr.append(tdLab('Singularis'),
         td(), td(2)); tbody.appendChild(tr);
       slots.push(tr.children[2]); }                                          // 25
-    // Du
     { const tr=document.createElement('tr'); tr.append(tdLab('Dualis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                           // 26..27
-    // Pl
     { const tr=document.createElement('tr'); tr.append(tdLab('Pluralis'),
         td(), td(), td()); tbody.appendChild(tr);
       slots.push(tr.children[1],tr.children[2]); }                           // 28..29
 
     table.appendChild(tbody);
 
-    // wypełnij
+    // wypełnij — teraz dla perf. pierwszy element (Infinitivus) nie ginie
     slots.forEach((cell, i)=>{
-      if(i===0 && !isImpf){ cell.textContent = ""; }
-      else cell.textContent = v[i] || "—";
+      cell.textContent = v[i] || (i===0 ? "" : "—");
     });
 
     return table;
